@@ -1,0 +1,1467 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ระบบนำทางเป้าหมาย (สภ.ระเบาะไผ่)</title>
+
+    <!-- ดึงไฟล์ CSS ของ Leaflet และ MarkerCluster -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --panel-bg: rgba(20, 20, 20, 0.75);
+            --text-light: #ffffff;
+            --accent-red: #d32f2f;
+            --accent-blue: #4285F4;
+            --accent-green: #2e7d32;
+        }
+
+        body {
+            font-family: 'Sarabun', sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #000;
+            color: var(--text-light);
+            overflow: hidden;
+        }
+
+        #map {
+            height: 100vh;
+            width: 100vw;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        .bottom-panel {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translate(-50%, 0);
+            width: 90%;
+            max-width: 400px;
+            background: var(--panel-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            padding: 15px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+            border: 1px solid rgba(255,255,255,0.2);
+            z-index: 1000;
+            transition: transform 0.35s ease, opacity 0.3s ease;
+        }
+        .bottom-panel.ui-hidden {
+            transform: translate(-50%, 160%);
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .ui-handle {
+            position: fixed;
+            bottom: 14px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 54px;
+            height: 24px;
+            background: rgba(20,20,20,0.6);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            border: 1px solid rgba(255,255,255,0.25);
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            color: rgba(255,255,255,0.85);
+            z-index: 1000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+            cursor: pointer;
+        }
+        .ui-handle.visible { opacity: 1; pointer-events: auto; }
+
+        h3 { margin: 0; color: #ffca28; font-size: 16px; text-align: center; text-shadow: 1px 1px 2px #000; }
+
+        .hint-text {
+            font-size: 11px;
+            color: rgba(255,255,255,0.55);
+            text-align: center;
+            margin: 4px 0 10px 0;
+        }
+
+        .search-box {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 4px;
+            position: relative;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid rgba(255,255,255,0.3);
+            background: rgba(0,0,0,0.5);
+            color: white;
+            border-radius: 10px;
+            font-size: 15px;
+            font-family: 'Sarabun', sans-serif;
+        }
+        input[type="text"]:focus { outline: none; border-color: var(--accent-red); background: rgba(0,0,0,0.8); }
+
+        .suggestions-list {
+            display: none;
+            max-height: 180px;
+            overflow-y: auto;
+            background: rgba(0,0,0,0.9);
+            border-radius: 10px;
+            margin-bottom: 10px;
+            border: 1px solid rgba(255,255,255,0.15);
+        }
+        .suggestion-item {
+            padding: 10px 12px;
+            font-size: 14px;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+        .suggestion-item:last-child { border-bottom: none; }
+        .suggestion-item:hover, .suggestion-item:active { background: rgba(255,255,255,0.12); }
+        .suggestion-empty { padding: 10px 12px; font-size: 13px; color: #999; text-align: center; }
+
+        button {
+            padding: 10px 15px;
+            background: var(--accent-red);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 15px;
+            cursor: pointer;
+            font-family: 'Sarabun', sans-serif;
+            font-weight: 600;
+            transition: 0.2s;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        }
+        button:active { transform: scale(0.95); }
+
+        .data-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 5px;
+        }
+
+        .upload-btn {
+            position: relative;
+            overflow: hidden;
+            background: rgba(255,255,255,0.15);
+            flex: 1;
+            text-align: center;
+            border-radius: 10px;
+            padding: 10px 6px;
+            font-size: 13px;
+            font-weight: 600;
+            border: 1px solid rgba(255,255,255,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .upload-btn:hover { background: rgba(255,255,255,0.25); }
+        .upload-btn input[type=file] {
+            position: absolute;
+            left: 0; top: 0;
+            opacity: 0;
+            width: 100%; height: 100%;
+            cursor: pointer;
+        }
+
+        .export-btn {
+            background: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.2);
+            font-size: 13px;
+            white-space: nowrap;
+            padding: 10px 12px;
+        }
+        .export-btn:hover { background: rgba(255,255,255,0.25); }
+
+        .gps-btn {
+            position: absolute;
+            bottom: 300px;
+            right: 20px;
+            background: rgba(66, 133, 244, 0.72);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            width: 48px;
+            height: 48px;
+            border-radius: 24px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 22px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+            z-index: 1000;
+            border: 2px solid rgba(255,255,255,0.85);
+            cursor: pointer;
+            transition: background 0.2s, opacity 0.3s ease, transform 0.3s ease;
+        }
+        .gps-btn:active { transform: scale(0.9); }
+        .gps-btn:hover { background: rgba(66, 133, 244, 0.9); }
+        .gps-btn.ui-hidden { opacity: 0; transform: translateY(24px); pointer-events: none; }
+
+        .nearby-btn {
+            position: absolute;
+            bottom: 358px;
+            right: 20px;
+            background: rgba(46, 125, 50, 0.72);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            width: 48px;
+            height: 48px;
+            border-radius: 24px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 20px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+            z-index: 1000;
+            border: 2px solid rgba(255,255,255,0.85);
+            cursor: pointer;
+            transition: background 0.2s, opacity 0.3s ease, transform 0.3s ease;
+        }
+        .nearby-btn:active { transform: scale(0.9); }
+        .nearby-btn:hover { background: rgba(46, 125, 50, 0.9); }
+        .nearby-btn.ui-hidden { opacity: 0; transform: translateY(24px); pointer-events: none; }
+
+        .settings-btn {
+            position: absolute;
+            bottom: 416px;
+            right: 20px;
+            background: rgba(90, 90, 90, 0.72);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            width: 48px;
+            height: 48px;
+            border-radius: 24px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 20px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+            z-index: 1000;
+            border: 2px solid rgba(255,255,255,0.85);
+            cursor: pointer;
+            transition: background 0.2s, opacity 0.3s ease, transform 0.3s ease;
+        }
+        .settings-btn:active { transform: scale(0.9); }
+        .settings-btn:hover { background: rgba(90, 90, 90, 0.9); }
+        .settings-btn.ui-hidden { opacity: 0; transform: translateY(24px); pointer-events: none; }
+
+        .sync-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            margin-left: 6px;
+            vertical-align: middle;
+        }
+        .sync-badge.online { background: rgba(46,125,50,0.35); color: #a5d6a7; }
+        .sync-badge.offline { background: rgba(255,255,255,0.12); color: #bbb; }
+        .sync-badge.syncing { background: rgba(66,133,244,0.3); color: #90caf9; }
+
+        .leaflet-popup-content-wrapper, .leaflet-popup-tip {
+            background: rgba(30,30,30,0.95) !important;
+            color: #fff !important;
+            box-shadow: 0 3px 14px rgba(0,0,0,0.6);
+            backdrop-filter: blur(5px);
+        }
+        .popup-btn {
+            display: block;
+            margin-top: 10px;
+            padding: 8px;
+            background: var(--accent-blue);
+            color: white !important;
+            text-decoration: none;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: bold;
+        }
+        .popup-actions {
+            display: flex;
+            gap: 6px;
+            margin-top: 8px;
+        }
+        .popup-action {
+            flex: 1;
+            padding: 7px;
+            border-radius: 8px;
+            border: none;
+            font-size: 13px;
+            cursor: pointer;
+            color: #fff;
+            font-family: 'Sarabun', sans-serif;
+            font-weight: 600;
+        }
+        .popup-action.edit { background: var(--accent-blue); }
+        .popup-action.delete { background: var(--accent-red); }
+
+        .data-status {
+            font-size: 12px; color: #ddd; text-align: center; margin-top: 8px;
+        }
+
+        /* เครดิตผู้พัฒนา */
+        .developer-credit {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.5);
+            text-align: center;
+            margin-top: 10px;
+            padding-top: 8px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            line-height: 1.4;
+        }
+
+        /* Toast notifications */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 3000;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            align-items: center;
+            pointer-events: none;
+        }
+        .toast {
+            padding: 10px 18px;
+            border-radius: 10px;
+            font-size: 14px;
+            color: #fff;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+            animation: fadeInOut 3s ease forwards;
+            max-width: 80vw;
+            text-align: center;
+        }
+        .toast.success { background: var(--accent-green); }
+        .toast.error { background: var(--accent-red); }
+        .toast.info { background: #37474f; }
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: translateY(-10px); }
+            10% { opacity: 1; transform: translateY(0); }
+            90% { opacity: 1; }
+            100% { opacity: 0; transform: translateY(-10px); }
+        }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.65);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 2500;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .modal-box {
+            background: rgba(25,25,25,0.97);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 20px;
+            width: 100%;
+            max-width: 340px;
+            border: 1px solid rgba(255,255,255,0.15);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.7);
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .modal-box h3 { text-align: left; margin-bottom: 12px; }
+        .modal-btn-row { display: flex; gap: 8px; margin-top: 6px; }
+        .modal-btn-row button { flex: 1; }
+        .btn-secondary { background: #555 !important; }
+        .btn-green { background: var(--accent-green) !important; }
+
+        .nearby-list { max-height: 300px; overflow-y: auto; }
+        .nearby-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .nearby-item:hover, .nearby-item:active { background: rgba(255,255,255,0.08); }
+        .nearby-item:last-child { border-bottom: none; }
+        .nearby-dist { color: var(--accent-blue); font-weight: 600; font-size: 13px; white-space: nowrap; margin-left: 8px; }
+        .nearby-empty { text-align: center; color: #999; padding: 20px 0; font-size: 14px; }
+
+        /* ===== หน้าจอเข้าสู่ระบบ ===== */
+        .login-screen {
+            position: fixed;
+            inset: 0;
+            z-index: 5000;
+            background: linear-gradient(160deg, #0b0f14, #131b24 60%, #0b0f14);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .login-card {
+            width: 100%;
+            max-width: 340px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 20px;
+            padding: 30px 24px;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+        }
+        .login-card.shake { animation: loginShake 0.4s; }
+        @keyframes loginShake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-8px); }
+            40%, 80% { transform: translateX(8px); }
+        }
+        .login-icon { font-size: 38px; margin-bottom: 6px; }
+        .login-card h2 { margin: 0 0 4px 0; color: #ffca28; font-size: 19px; }
+        .login-sub { font-size: 12px; color: rgba(255,255,255,0.55); margin-bottom: 22px; line-height: 1.5; }
+        .login-card input {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 12px;
+            margin-bottom: 12px;
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.25);
+            background: rgba(0,0,0,0.4);
+            color: #fff;
+            font-size: 15px;
+            font-family: 'Sarabun', sans-serif;
+        }
+        .login-card input:focus { outline: none; border-color: var(--accent-blue); }
+        .login-card button[type=submit] {
+            width: 100%;
+            padding: 12px;
+            background: var(--accent-blue);
+            border: none;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            font-family: 'Sarabun', sans-serif;
+        }
+        .login-card button[type=submit]:disabled { opacity: 0.5; cursor: not-allowed; }
+        .login-error { margin-top: 12px; font-size: 13px; color: #ff6b6b; min-height: 16px; }
+        .login-info { margin-top: 12px; font-size: 13px; color: #ffca28; min-height: 16px; }
+
+        /* ===== แถบแสดงชื่อผู้ใช้งานที่ล็อกอินอยู่ ===== */
+        .user-badge {
+            position: fixed;
+            top: 14px;
+            left: 14px;
+            background: rgba(20,20,20,0.65);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            padding: 7px 10px 7px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            display: none;
+            align-items: center;
+            gap: 8px;
+            z-index: 1500;
+            border: 1px solid rgba(255,255,255,0.2);
+            max-width: 60vw;
+        }
+        .user-badge.visible { display: flex; }
+        .user-badge span {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .user-badge button {
+            background: transparent;
+            border: none;
+            color: #fff;
+            font-size: 15px;
+            cursor: pointer;
+            padding: 2px 4px;
+            box-shadow: none;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- หน้าจอเข้าสู่ระบบ -->
+    <div class="login-screen" id="loginScreen">
+        <form class="login-card" id="loginForm">
+            <div class="login-icon">🛰️🔒</div>
+            <h2>ระบบนำทางเป้าหมาย</h2>
+            <div class="login-sub">สภ.ระเบาะไผ่<br>สำหรับเจ้าหน้าที่ที่ได้รับอนุญาตเท่านั้น</div>
+            <input type="text" id="loginUsername" placeholder="Username" autocomplete="username" required>
+            <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password" required>
+            <button type="submit" id="loginSubmitBtn">เข้าสู่ระบบ</button>
+            <div class="login-error" id="loginError"></div>
+        </form>
+    </div>
+
+    <!-- แถบชื่อผู้ใช้งาน + ออกจากระบบ -->
+    <div class="user-badge" id="userBadge">
+        <span id="userBadgeName"></span>
+        <button onclick="doLogout()" title="ออกจากระบบ">🚪</button>
+    </div>
+
+    <div id="map"></div>
+
+    <!-- Toast container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Modal -->
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal-box" id="modalBox"></div>
+    </div>
+
+    <!-- ปุ่มจุดใกล้ฉัน -->
+    <div class="nearby-btn" onclick="showNearby()" title="จุดที่ใกล้ที่สุด">📍</div>
+
+    <!-- ปุ่มตั้งค่าฐานข้อมูลกลาง -->
+    <div class="settings-btn" onclick="openSettingsModal()" title="ตั้งค่าฐานข้อมูลกลาง">⚙️</div>
+
+    <!-- ปุ่ม GPS -->
+    <div class="gps-btn" onclick="locateUser()" title="แสดงตำแหน่งปัจจุบัน">🎯</div>
+
+    <!-- แถบเล็กๆ ไว้แตะเรียกแผงกลับมาเมื่อซ่อนอยู่ -->
+    <div class="ui-handle" id="uiHandle" onclick="setUIVisible(true)">▲</div>
+
+    <!-- แผงควบคุมด้านล่าง -->
+    <div class="bottom-panel">
+        <h3>🛰️ ระบบนำทางเป้าหมาย (สภ.ระเบาะไผ่)</h3>
+        <div class="hint-text">💡 แตะค้างบนแผนที่ (หรือคลิกขวา) เพื่อเพิ่มจุดใหม่ทันที</div>
+
+        <div class="search-box">
+            <input type="text" id="houseInput" placeholder="พิมพ์บ้านเลขที่ / ชื่อเป้าหมาย...">
+            <button onclick="searchHouse()">ค้นหา</button>
+        </div>
+        <div class="suggestions-list" id="suggestionsList"></div>
+
+        <div class="data-row">
+            <div class="upload-btn">
+                <span>📁 นำเข้า KML/JSON</span>
+                <input type="file" id="kmlUpload" accept=".kml,.json" multiple onchange="handleFileUpload(event)">
+            </div>
+            <button class="export-btn" onclick="exportData()">⬇️ สำรองข้อมูล</button>
+        </div>
+
+        <div class="data-status" id="dataCount"><span id="dataCountText">กำลังโหลดข้อมูล...</span><span class="sync-badge offline" id="syncBadge">⚪ ออฟไลน์</span></div>
+
+        <!-- ติดเครดิต -->
+        <div class="developer-credit">
+            👨‍💻 พัฒนาระบบโดย: ส.ต.ท.ราชานนท์ ฉัตร์ไตรภพ<br>ตำแหน่ง ผบ.หมู่ (ผช.พงส.) สภ.ระเบาะไผ่
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
+    <script>
+        // ===================== ข้อมูลตั้งต้น =====================
+        const defaultData = [
+            { name: "โรงน้ำหนองหอย", lat: 13.850179, lng: 101.573708 },
+            { name: "49 ม.10 ต.ศรีมหาโพธิ", lat: 13.849971, lng: 101.570297 },
+            { name: "96 ม.10 ต.ศรีมหาโพธิ", lat: 13.849971, lng: 101.570297 },
+            { name: "109/1 ม.10 ต.ศรีมหาโพธิ", lat: 13.848524, lng: 101.57145 },
+            { name: "94 ม.10 ต.ศรีมหาโพธิ", lat: 13.849593, lng: 101.573022 },
+            { name: "98 ม.10 ต.ศรีมหาโพธิ", lat: 13.849593, lng: 101.573022 },
+            { name: "อนุชา สมนาค", lat: 13.893896, lng: 101.526834 },
+            { name: "8 ม.9 หนองโพรง", lat: 13.893896, lng: 101.526834 },
+            { name: "15/1 ม.11 ต.หัวหว้า", lat: 13.850179, lng: 101.573708 },
+            { name: "82 ม.8 ต.หนองโพรง", lat: 13.893708, lng: 101.516792 },
+            { name: "27 ม.12 ต.หัวหว้า", lat: 13.795177, lng: 101.546233 },
+            { name: "8/1 ม.4 ต.กรอกสมบูรณ์", lat: 13.885007, lng: 101.594893 },
+            { name: "138/4 ม.7 ต.กรอกสมบูรณ์", lat: 13.746333, lng: 101.655281 },
+            { name: "110/3 ม.8 ต.หนองโพรง", lat: 13.816233, lng: 101.55884 },
+            { name: "259/6 ม.8 ต.หัวหว้า", lat: 13.906401, lng: 101.504579 },
+            { name: "158/16 ม.13 ต.หนองโพรง", lat: 13.873587, lng: 101.533878 },
+            { name: "บ้านนายอัศวิน ป้องกัน", lat: 13.826625, lng: 101.557193 },
+            { name: "448 ม.1 ต.กรอกสมบูรณ์", lat: 13.778983, lng: 101.663499 },
+            { name: "106/2 ม.1 ต.กรอกสมบูรณ์", lat: 13.775947, lng: 101.663944 }
+        ];
+
+        let houseData = [];
+        let pendingNearbyShow = false;
+        let pendingLatLng = null;
+        let userMarker = null;
+        let userAccuracyCircle = null;
+        let distanceLine = null;
+
+        const map = L.map('map', { zoomControl: false }).setView([13.8406, 101.5540], 12);
+
+        L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+            attribution: '© Google Maps',
+            maxZoom: 20
+        }).addTo(map);
+
+        const markersGroup = L.markerClusterGroup({
+            spiderfyOnMaxZoom: true,
+            showCoverageOnHover: false,
+            zoomToBoundsOnClick: true
+        });
+
+        const redIcon = L.icon({
+            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+            iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+        });
+        const greenIcon = L.icon({
+            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+            iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+        });
+
+        // ===================== ฟังก์ชันช่วยเหลือ =====================
+        function genId() {
+            return Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function haversine(lat1, lng1, lat2, lng2) {
+            const R = 6371;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLng = (lng2 - lng1) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        }
+
+        function isDuplicate(existing, name, lat, lng) {
+            return existing.some(h => h.name === name && Math.abs(h.lat - lat) < 0.00005 && Math.abs(h.lng - lng) < 0.00005);
+        }
+
+        function showToast(msg, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = msg;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        function openModal(html) {
+            document.getElementById('modalBox').innerHTML = html;
+            document.getElementById('modalOverlay').style.display = 'flex';
+        }
+        function closeModal() {
+            document.getElementById('modalOverlay').style.display = 'none';
+        }
+        document.getElementById('modalOverlay').addEventListener('click', function (e) {
+            if (e.target === this) closeModal();
+        });
+
+        // ===================== เชื่อมต่อฐานข้อมูลกลาง (Google Sheets ผ่าน Apps Script) =====================
+        const API_URL_KEY = 'raboMapApiUrl';
+        let autoRefreshTimer = null;
+        let isSyncing = false;
+
+        function getApiUrl() { return (localStorage.getItem(API_URL_KEY) || '').trim(); }
+        function setApiUrl(url) { localStorage.setItem(API_URL_KEY, url.trim()); }
+
+        function currentOfficerName() {
+            const session = getSession();
+            return session ? session.name : '';
+        }
+
+        function updateSyncBadge(state, label) {
+            const badge = document.getElementById('syncBadge');
+            if (!badge) return;
+            badge.className = 'sync-badge ' + state;
+            const labels = {
+                online: '🟢 ' + (label || 'ออนไลน์ (ข้อมูลกลาง)'),
+                offline: '⚪ ' + (label || 'ออฟไลน์ (เฉพาะเครื่องนี้)'),
+                syncing: '🔄 ' + (label || 'กำลังซิงค์...')
+            };
+            badge.textContent = labels[state] || labels.offline;
+        }
+
+        // เรียก Apps Script แบบอ่านข้อมูล (GET)
+        async function apiGet(action, params) {
+            const api = getApiUrl();
+            if (!api) return { ok: false, error: 'ยังไม่ได้ตั้งค่า URL ฐานข้อมูลกลาง' };
+            let url = api + '?action=' + encodeURIComponent(action);
+            if (params) {
+                Object.keys(params).forEach(k => { url += '&' + k + '=' + encodeURIComponent(params[k]); });
+            }
+            try {
+                const res = await fetch(url);
+                return await res.json();
+            } catch (err) {
+                return { ok: false, error: String(err) };
+            }
+        }
+
+        // เรียก Apps Script แบบเขียนข้อมูล (POST)
+        async function apiPost(payload) {
+            const api = getApiUrl();
+            if (!api) return { ok: false, error: 'ยังไม่ได้ตั้งค่า URL ฐานข้อมูลกลาง' };
+            try {
+                const res = await fetch(api, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // เลี่ยง CORS preflight
+                    body: JSON.stringify(payload)
+                });
+                return await res.json();
+            } catch (err) {
+                return { ok: false, error: String(err) };
+            }
+        }
+
+        // ดึงหมุดทั้งหมดจากฐานข้อมูลกลาง แล้วนำมาแทนที่ข้อมูลในเครื่อง
+        async function syncFromServer(showToasts) {
+            if (!getApiUrl()) { updateSyncBadge('offline'); return false; }
+            if (isSyncing) return false;
+            isSyncing = true;
+            updateSyncBadge('syncing');
+            const result = await apiGet('listPoints');
+            isSyncing = false;
+
+            if (result.ok) {
+                houseData = result.points.map(p => ({
+                    id: p.id, name: p.name, lat: p.lat, lng: p.lng,
+                    source: p.source || 'shared', addedBy: p.addedBy || ''
+                }));
+                localStorage.setItem('raboMapData', JSON.stringify(houseData));
+                updateMapMarkers();
+                updateSyncBadge('online');
+                if (showToasts) showToast('ซิงค์ข้อมูลกับฐานข้อมูลกลางสำเร็จ', 'success');
+                return true;
+            } else {
+                updateSyncBadge('offline', 'เชื่อมต่อไม่สำเร็จ (ใช้ข้อมูลในเครื่อง)');
+                if (showToasts) showToast('ซิงค์ไม่สำเร็จ: ' + (result.error || 'ไม่ทราบสาเหตุ'), 'error');
+                return false;
+            }
+        }
+
+        function startAutoRefresh() {
+            if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+            if (!getApiUrl()) return;
+            autoRefreshTimer = setInterval(() => {
+                // ไม่ซิงค์ระหว่างที่มีหน้าต่าง modal เปิดอยู่ (กันข้อมูลเปลี่ยนขณะกำลังกรอก/แก้ไข)
+                if (document.getElementById('modalOverlay').style.display === 'flex') return;
+                syncFromServer(false);
+            }, 30000);
+        }
+
+        function openSettingsModal() {
+            const currentUrl = getApiUrl();
+            openModal(`
+                <h3>⚙️ ตั้งค่าฐานข้อมูลกลาง</h3>
+                <p style="font-size:13px;color:#ccc;margin-top:-6px;">
+                    ใส่ Web App URL ของ Google Apps Script เพื่อให้หมุดทั้งหมดซิงค์กับเจ้าหน้าที่ทุกคนแบบเรียลไทม์
+                </p>
+                <input type="text" id="settingsApiUrl" placeholder="https://script.google.com/macros/s/XXXX/exec" value="${escapeHtml(currentUrl)}">
+                <div class="modal-btn-row">
+                    <button class="btn-secondary" onclick="closeModal()">ปิด</button>
+                    <button class="btn-green" onclick="saveApiSettings()">บันทึกและซิงค์</button>
+                </div>
+                <p style="font-size:12px;color:#999;margin-top:14px;line-height:1.6;">
+                    💡 วิธีสร้าง URL นี้ ดูได้ในคอมเมนต์ด้านบนของไฟล์ MapPoints_AppsScript.gs ที่แนบมาให้<br>
+                    ถ้าไม่ตั้งค่า ระบบจะทำงานแบบเก็บข้อมูลเฉพาะเครื่องนี้เหมือนเดิม
+                </p>
+            `);
+            setTimeout(() => document.getElementById('settingsApiUrl')?.focus(), 100);
+        }
+
+        async function saveApiSettings() {
+            const url = document.getElementById('settingsApiUrl').value.trim();
+            setApiUrl(url);
+            closeModal();
+            if (!url) {
+                updateSyncBadge('offline');
+                startAutoRefresh();
+                showToast('ยกเลิกการเชื่อมต่อฐานข้อมูลกลางแล้ว (โหมดออฟไลน์)', 'info');
+                return;
+            }
+            showToast('กำลังเชื่อมต่อฐานข้อมูลกลาง...', 'info');
+            const success = await syncFromServer(true);
+            startAutoRefresh();
+            if (!success) {
+                showToast('เชื่อมต่อไม่สำเร็จ กรุณาตรวจสอบ URL อีกครั้ง', 'error');
+            }
+        }
+
+        // ===================== ข้อมูล / การบันทึก =====================
+        async function loadData() {
+            // โหลดข้อมูลที่แคชไว้ในเครื่องก่อน เพื่อให้แผนที่ขึ้นหมุดได้ทันทีระหว่างรอเชื่อมต่อเซิร์ฟเวอร์
+            const savedData = localStorage.getItem('raboMapData');
+            if (savedData) {
+                try {
+                    houseData = JSON.parse(savedData);
+                    houseData.forEach(h => { if (!h.id) h.id = genId(); });
+                } catch (e) { houseData = []; }
+            }
+
+            if (getApiUrl()) {
+                // มีการตั้งค่าฐานข้อมูลกลางไว้แล้ว -> ใช้ข้อมูลจากเซิร์ฟเวอร์เป็นหลัก
+                updateMapMarkers();
+                const success = await syncFromServer(false);
+                if (!success) {
+                    showToast('ไม่สามารถเชื่อมต่อฐานข้อมูลกลางได้ กำลังใช้ข้อมูลที่บันทึกไว้ในเครื่องแทน', 'error');
+                }
+                startAutoRefresh();
+            } else {
+                // ยังไม่ได้ตั้งค่าฐานข้อมูลกลาง -> ทำงานแบบเดิม (เก็บเฉพาะเครื่องนี้ + seed ข้อมูลตั้งต้น)
+                if (savedData) {
+                    defaultData.forEach(newObj => {
+                        if (!isDuplicate(houseData, newObj.name, newObj.lat, newObj.lng)) {
+                            houseData.push({ id: genId(), name: newObj.name, lat: newObj.lat, lng: newObj.lng, source: 'default' });
+                        }
+                    });
+                } else {
+                    houseData = defaultData.map(d => ({ id: genId(), name: d.name, lat: d.lat, lng: d.lng, source: 'default' }));
+                }
+                saveData();
+                updateMapMarkers();
+                updateSyncBadge('offline');
+            }
+        }
+
+        function saveData() {
+            localStorage.setItem('raboMapData', JSON.stringify(houseData));
+            document.getElementById('dataCountText').textContent = `ฐานข้อมูล: ${houseData.length} จุดหมาย`;
+        }
+
+        function buildPopupContent(item) {
+            const gmapLink = `https://www.google.com/maps/dir/?api=1&destination=${item.lat},${item.lng}`;
+            let distHtml = '';
+            if (userMarker) {
+                const u = userMarker.getLatLng();
+                const d = haversine(u.lat, u.lng, item.lat, item.lng);
+                distHtml = `<div style="font-size:13px;color:#9e9e9e;margin-top:4px;">ระยะทางตรง: ${d.toFixed(2)} กม.</div>`;
+            }
+            return `
+                <div style="font-size: 15px; text-align:center; min-width:190px;">
+                    <b style="color: #ffca28; font-size:16px;">${escapeHtml(item.name)}</b>
+                    ${distHtml}
+                    <a href="${gmapLink}" target="_blank" rel="noopener" class="popup-btn">🚀 นำทาง (Google Maps)</a>
+                    <div class="popup-actions">
+                        <button class="popup-action edit" onclick="openEditModal('${item.id}')">✏️ แก้ไข</button>
+                        <button class="popup-action delete" onclick="confirmDelete('${item.id}')">🗑️ ลบ</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function updateMapMarkers() {
+            markersGroup.clearLayers();
+            houseData.forEach(item => {
+                const icon = item.source === 'manual' ? greenIcon : redIcon;
+                const marker = L.marker([item.lat, item.lng], { icon: icon });
+                marker._itemId = item.id;
+                marker.bindPopup('', { maxWidth: 240 });
+                marker.on('popupopen', function () {
+                    marker.setPopupContent(buildPopupContent(item));
+                });
+                markersGroup.addLayer(marker);
+            });
+            map.addLayer(markersGroup);
+            document.getElementById('dataCountText').textContent = `ฐานข้อมูล: ${houseData.length} จุดหมาย`;
+        }
+
+        // ===================== ค้นหา / อัตโนมัติ =====================
+        function flyToTarget(item) {
+            map.flyTo([item.lat, item.lng], 19, { duration: 1.5 });
+            setTimeout(() => {
+                markersGroup.eachLayer(function (layer) {
+                    if (layer._itemId === item.id) {
+                        markersGroup.zoomToShowLayer(layer, function () { layer.openPopup(); });
+                    }
+                });
+            }, 1600);
+            drawDistanceLine(item);
+        }
+
+        function searchHouse() {
+            const query = document.getElementById('houseInput').value.trim();
+            if (!query) { showToast('กรุณาพิมพ์เป้าหมาย', 'error'); return; }
+            const result = houseData.find(h => h.name.toLowerCase().includes(query.toLowerCase()));
+            document.getElementById('suggestionsList').style.display = 'none';
+            if (result) {
+                flyToTarget(result);
+            } else {
+                showToast('ค้นหาไม่พบ กรุณาตรวจสอบอีกครั้ง', 'error');
+            }
+        }
+
+        function selectSuggestion(id) {
+            const item = houseData.find(h => h.id === id);
+            if (!item) return;
+            document.getElementById('houseInput').value = item.name;
+            document.getElementById('suggestionsList').style.display = 'none';
+            flyToTarget(item);
+        }
+
+        document.getElementById('houseInput').addEventListener('input', function () {
+            const q = this.value.trim();
+            const list = document.getElementById('suggestionsList');
+            if (!q) { list.innerHTML = ''; list.style.display = 'none'; return; }
+            const matches = houseData.filter(h => h.name.toLowerCase().includes(q.toLowerCase())).slice(0, 8);
+            if (matches.length === 0) {
+                list.innerHTML = '<div class="suggestion-empty">ไม่พบข้อมูลที่ตรงกัน</div>';
+                list.style.display = 'block';
+                return;
+            }
+            list.innerHTML = matches.map(h => `<div class="suggestion-item" onclick="selectSuggestion('${h.id}')">${escapeHtml(h.name)}</div>`).join('');
+            list.style.display = 'block';
+        });
+        document.getElementById('houseInput').addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { searchHouse(); this.blur(); }
+        });
+        document.getElementById('houseInput').addEventListener('blur', function () {
+            setTimeout(() => { document.getElementById('suggestionsList').style.display = 'none'; }, 150);
+        });
+        document.getElementById('houseInput').addEventListener('focus', function () {
+            if (this.value.trim()) this.dispatchEvent(new Event('input'));
+        });
+
+        // ===================== ตำแหน่งปัจจุบัน / จุดใกล้ที่สุด =====================
+        function locateUser() {
+            map.locate({ setView: true, maxZoom: 18 });
+        }
+
+        function drawDistanceLine(item) {
+            if (distanceLine) { map.removeLayer(distanceLine); distanceLine = null; }
+            if (!userMarker) return;
+            const u = userMarker.getLatLng();
+            distanceLine = L.polyline([u, [item.lat, item.lng]], { color: '#4285F4', weight: 3, dashArray: '8,8', opacity: 0.8 }).addTo(map);
+        }
+
+        function showNearby() {
+            if (!userMarker) {
+                showToast('กำลังค้นหาตำแหน่งของคุณ...', 'info');
+                pendingNearbyShow = true;
+                map.locate({ setView: false, maxZoom: 18 });
+                return;
+            }
+            renderNearbyList();
+        }
+
+        function renderNearbyList() {
+            const u = userMarker.getLatLng();
+            if (houseData.length === 0) {
+                openModal(`<h3>📍 จุดที่ใกล้ที่สุด</h3><div class="nearby-empty">ยังไม่มีข้อมูลจุดหมาย</div><button class="btn-secondary" style="width:100%;margin-top:10px;" onclick="closeModal()">ปิด</button>`);
+                return;
+            }
+            const withDist = houseData.map(h => ({ ...h, dist: haversine(u.lat, u.lng, h.lat, h.lng) }));
+            withDist.sort((a, b) => a.dist - b.dist);
+            const top = withDist.slice(0, 10);
+            const listHtml = top.map(h => `
+                <div class="nearby-item" onclick="flyToTarget(houseData.find(x=>x.id==='${h.id}')); closeModal();">
+                    <span>${escapeHtml(h.name)}</span>
+                    <span class="nearby-dist">${h.dist.toFixed(2)} กม.</span>
+                </div>`).join('');
+            openModal(`
+                <h3>📍 จุดที่ใกล้ที่สุด (10 อันดับ)</h3>
+                <div class="nearby-list">${listHtml}</div>
+                <button class="btn-secondary" style="width:100%;margin-top:12px;" onclick="closeModal()">ปิด</button>
+            `);
+        }
+
+        map.on('locationfound', function (e) {
+            if (userMarker) map.removeLayer(userMarker);
+            if (userAccuracyCircle) map.removeLayer(userAccuracyCircle);
+
+            const radius = e.accuracy / 2;
+            userMarker = L.marker(e.latlng).addTo(map)
+                .bindPopup("ตำแหน่งของคุณ (คลาดเคลื่อนไม่เกิน " + Math.round(radius) + " เมตร)");
+            userAccuracyCircle = L.circle(e.latlng, radius, { color: '#4285F4', fillColor: '#4285F4', fillOpacity: 0.15 }).addTo(map);
+
+            if (pendingNearbyShow) {
+                pendingNearbyShow = false;
+                renderNearbyList();
+            } else {
+                userMarker.openPopup();
+            }
+        });
+
+        map.on('locationerror', function (e) {
+            pendingNearbyShow = false;
+            showToast('ไม่สามารถเข้าถึงตำแหน่ง GPS ได้ กรุณาตรวจสอบการตั้งค่า Location', 'error');
+        });
+
+        // ===================== เพิ่มจุดใหม่ (แตะค้าง / คลิกขวา) =====================
+        function openAddPointModal(latlng) {
+            pendingLatLng = latlng;
+            openModal(`
+                <h3 style="color:#8bc34a;">📍 เพิ่มจุดใหม่</h3>
+                <p style="font-size:13px;color:#ccc;margin-top:-6px;">พิกัด: ${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}</p>
+                <input type="text" id="newNameInput" placeholder="ชื่อเป้าหมาย / บ้านเลขที่...">
+                <div class="modal-btn-row">
+                    <button class="btn-secondary" onclick="closeModal()">ยกเลิก</button>
+                    <button class="btn-green" onclick="saveNewPoint()">บันทึก</button>
+                </div>
+            `);
+            setTimeout(() => document.getElementById('newNameInput')?.focus(), 100);
+        }
+
+        async function saveNewPoint() {
+            const nameInput = document.getElementById('newNameInput');
+            const name = nameInput.value.trim();
+            if (!name) { showToast('กรุณาพิมพ์ชื่อจุดหมาย', 'error'); return; }
+            const saveBtn = document.querySelector('.modal-btn-row .btn-green');
+
+            if (getApiUrl()) {
+                if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'กำลังบันทึก...'; }
+                const result = await apiPost({
+                    action: 'addPoint',
+                    point: { name: name, lat: pendingLatLng.lat, lng: pendingLatLng.lng, source: 'manual', addedBy: currentOfficerName() }
+                });
+                if (result.ok) {
+                    houseData.push({ id: result.point.id, name: result.point.name, lat: result.point.lat, lng: result.point.lng, source: 'manual', addedBy: result.point.addedBy });
+                    localStorage.setItem('raboMapData', JSON.stringify(houseData));
+                    updateMapMarkers();
+                    closeModal();
+                    showToast('เพิ่มจุดใหม่ลงฐานข้อมูลกลางแล้ว', 'success');
+                } else {
+                    closeModal();
+                    showToast('บันทึกไม่สำเร็จ: ' + (result.error || 'ไม่ทราบสาเหตุ'), 'error');
+                }
+            } else {
+                houseData.push({ id: genId(), name: name, lat: pendingLatLng.lat, lng: pendingLatLng.lng, source: 'manual' });
+                saveData();
+                updateMapMarkers();
+                closeModal();
+                showToast('เพิ่มจุดใหม่เรียบร้อยแล้ว (บันทึกเฉพาะเครื่องนี้)', 'success');
+            }
+        }
+
+        map.on('contextmenu', function (e) {
+            openAddPointModal(e.latlng);
+        });
+
+        (function setupLongPress() {
+            let touchTimer = null;
+            let touchStartLatLng = null;
+            let touchMoved = false;
+            const container = map.getContainer();
+
+            container.addEventListener('touchstart', function (e) {
+                if (e.touches.length !== 1) { clearTimeout(touchTimer); return; }
+                touchMoved = false;
+                const touch = e.touches[0];
+                const rect = container.getBoundingClientRect();
+                const point = L.point(touch.clientX - rect.left, touch.clientY - rect.top);
+                touchStartLatLng = map.containerPointToLatLng(point);
+                touchTimer = setTimeout(() => {
+                    if (!touchMoved) {
+                        if (navigator.vibrate) navigator.vibrate(40);
+                        openAddPointModal(touchStartLatLng);
+                    }
+                }, 600);
+            }, { passive: true });
+
+            container.addEventListener('touchmove', function () {
+                touchMoved = true;
+                clearTimeout(touchTimer);
+            }, { passive: true });
+
+            container.addEventListener('touchend', function () { clearTimeout(touchTimer); });
+            container.addEventListener('touchcancel', function () { clearTimeout(touchTimer); });
+        })();
+
+        // ===================== แก้ไข / ลบจุด =====================
+        function openEditModal(id) {
+            const item = houseData.find(h => h.id === id);
+            if (!item) return;
+            openModal(`
+                <h3>✏️ แก้ไขจุดข้อมูล</h3>
+                <input type="text" id="editNameInput" value="${escapeHtml(item.name)}">
+                <div class="modal-btn-row">
+                    <button class="btn-secondary" onclick="closeModal()">ยกเลิก</button>
+                    <button onclick="saveEdit('${id}')">บันทึก</button>
+                </div>
+            `);
+            setTimeout(() => document.getElementById('editNameInput')?.focus(), 100);
+        }
+
+        async function saveEdit(id) {
+            const newName = document.getElementById('editNameInput').value.trim();
+            if (!newName) { showToast('กรุณาพิมพ์ชื่อ', 'error'); return; }
+            const item = houseData.find(h => h.id === id);
+            if (!item) return;
+
+            if (getApiUrl()) {
+                const result = await apiPost({ action: 'updatePoint', id: id, name: newName });
+                if (result.ok) {
+                    item.name = newName;
+                    localStorage.setItem('raboMapData', JSON.stringify(houseData));
+                    updateMapMarkers();
+                    closeModal();
+                    showToast('บันทึกการแก้ไขลงฐานข้อมูลกลางแล้ว', 'success');
+                } else {
+                    closeModal();
+                    showToast('แก้ไขไม่สำเร็จ: ' + (result.error || 'ไม่ทราบสาเหตุ') + ' — กำลังซิงค์ข้อมูลล่าสุด', 'error');
+                    syncFromServer(false);
+                }
+            } else {
+                item.name = newName;
+                saveData();
+                updateMapMarkers();
+                closeModal();
+                showToast('บันทึกการแก้ไขแล้ว', 'success');
+            }
+        }
+
+        function confirmDelete(id) {
+            const item = houseData.find(h => h.id === id);
+            if (!item) return;
+            openModal(`
+                <h3 style="color:#ff6b6b;">🗑️ ลบจุดข้อมูล</h3>
+                <p>ต้องการลบ "<b>${escapeHtml(item.name)}</b>" ใช่หรือไม่?<br><span style="font-size:12px;color:#999;">การลบไม่สามารถย้อนกลับได้</span></p>
+                <div class="modal-btn-row">
+                    <button class="btn-secondary" onclick="closeModal()">ยกเลิก</button>
+                    <button onclick="deletePoint('${id}')">ลบ</button>
+                </div>
+            `);
+        }
+
+        async function deletePoint(id) {
+            if (getApiUrl()) {
+                const result = await apiPost({ action: 'deletePoint', id: id });
+                if (result.ok) {
+                    houseData = houseData.filter(h => h.id !== id);
+                    localStorage.setItem('raboMapData', JSON.stringify(houseData));
+                    updateMapMarkers();
+                    closeModal();
+                    showToast('ลบจุดข้อมูลออกจากฐานข้อมูลกลางแล้ว', 'success');
+                } else {
+                    closeModal();
+                    showToast('ลบไม่สำเร็จ: ' + (result.error || 'ไม่ทราบสาเหตุ') + ' — กำลังซิงค์ข้อมูลล่าสุด', 'error');
+                    syncFromServer(false);
+                }
+            } else {
+                houseData = houseData.filter(h => h.id !== id);
+                saveData();
+                updateMapMarkers();
+                closeModal();
+                showToast('ลบจุดข้อมูลแล้ว', 'success');
+            }
+        }
+
+        // ===================== นำเข้า / ส่งออกข้อมูล =====================
+        function exportData() {
+            if (houseData.length === 0) { showToast('ยังไม่มีข้อมูลให้สำรอง', 'error'); return; }
+            const exportPayload = houseData.map(({ id, name, lat, lng, source }) => ({ id, name, lat, lng, source }));
+            const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const dateStr = new Date().toISOString().slice(0, 10);
+            a.href = url;
+            a.download = `rabo-map-backup-${dateStr}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast('ส่งออกข้อมูลสำเร็จ', 'success');
+        }
+
+        function handleFileUpload(event) {
+            const files = event.target.files;
+            if (files.length === 0) return;
+            const parsedItems = [];
+            let processed = 0;
+            showToast('กำลังอ่านไฟล์...', 'info');
+
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                const isJson = file.name.toLowerCase().endsWith('.json');
+                const reader = new FileReader();
+
+                reader.onload = async function (e) {
+                    try {
+                        if (isJson) {
+                            const arr = JSON.parse(e.target.result);
+                            if (Array.isArray(arr)) {
+                                arr.forEach(obj => {
+                                    if (obj && obj.name && typeof obj.lat === 'number' && typeof obj.lng === 'number') {
+                                        parsedItems.push({ name: obj.name, lat: obj.lat, lng: obj.lng, source: obj.source || 'import' });
+                                    }
+                                });
+                            } else {
+                                throw new Error('รูปแบบไฟล์ JSON ไม่ถูกต้อง');
+                            }
+                        } else {
+                            const text = e.target.result;
+                            const parser = new DOMParser();
+                            const xmlDoc = parser.parseFromString(text, "text/xml");
+                            if (xmlDoc.getElementsByTagName('parsererror').length > 0) {
+                                throw new Error('รูปแบบไฟล์ KML ไม่ถูกต้อง');
+                            }
+                            const placemarks = xmlDoc.getElementsByTagName("Placemark");
+                            for (let j = 0; j < placemarks.length; j++) {
+                                const nameNode = placemarks[j].getElementsByTagName("name")[0];
+                                const coordNode = placemarks[j].getElementsByTagName("coordinates")[0];
+                                if (nameNode && coordNode) {
+                                    const name = nameNode.textContent.trim();
+                                    const coords = coordNode.textContent.trim().split(',');
+                                    if (coords.length >= 2) {
+                                        const lng = parseFloat(coords[0]);
+                                        const lat = parseFloat(coords[1]);
+                                        if (!isNaN(lat) && !isNaN(lng)) {
+                                            parsedItems.push({ name: name, lat: lat, lng: lng, source: 'kml' });
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } catch (err) {
+                        showToast('เกิดข้อผิดพลาดในไฟล์: ' + file.name, 'error');
+                    }
+                    processed++;
+                    if (processed === files.length) {
+                        await finishImport(parsedItems);
+                        event.target.value = '';
+                    }
+                };
+                reader.onerror = async function () {
+                    processed++;
+                    showToast('ไม่สามารถอ่านไฟล์ได้: ' + file.name, 'error');
+                    if (processed === files.length) {
+                        await finishImport(parsedItems);
+                        event.target.value = '';
+                    }
+                };
+                reader.readAsText(file);
+            }
+        }
+
+        async function finishImport(parsedItems) {
+            if (parsedItems.length === 0) {
+                showToast('ไม่พบข้อมูลที่นำเข้าได้ในไฟล์', 'error');
+                return;
+            }
+
+            if (getApiUrl()) {
+                showToast('กำลังอัปโหลดข้อมูลขึ้นฐานข้อมูลกลาง...', 'info');
+                const itemsWithAuthor = parsedItems.map(p => ({ ...p, addedBy: currentOfficerName() }));
+                const result = await apiPost({ action: 'bulkImport', points: itemsWithAuthor });
+                if (result.ok) {
+                    await syncFromServer(false);
+                    showToast(`นำเข้าสำเร็จ! เพิ่มเป้าหมายใหม่ ${result.added} จุด (ข้ามรายการซ้ำอัตโนมัติ)`, 'success');
+                } else {
+                    showToast('นำเข้าไม่สำเร็จ: ' + (result.error || 'ไม่ทราบสาเหตุ'), 'error');
+                }
+            } else {
+                let addedCount = 0;
+                parsedItems.forEach(obj => {
+                    if (!isDuplicate(houseData, obj.name, obj.lat, obj.lng)) {
+                        houseData.push({ id: genId(), name: obj.name, lat: obj.lat, lng: obj.lng, source: obj.source });
+                        addedCount++;
+                    }
+                });
+                saveData();
+                updateMapMarkers();
+                showToast(`นำเข้าสำเร็จ! เพิ่มเป้าหมายใหม่ ${addedCount} จุด (บันทึกเฉพาะเครื่องนี้)`, 'success');
+            }
+        }
+
+        // ===================== ระบบยืนยันตัวตน (Username / Password) =====================
+        // เพิ่มบัญชีเจ้าหน้าที่แต่ละนายได้ที่นี่ (username ต้องไม่ซ้ำกัน)
+        // วิธีสร้าง passwordHash: เปิดไฟล์ gen-password-hash.html ที่แถมมาให้ พิมพ์รหัสผ่านที่ต้องการ
+        // แล้วคัดลอกค่า Hash ที่ได้มาวางแทนที่ค่า passwordHash ด้านล่าง
+        // *** บัญชีตัวอย่างด้านล่างนี้เป็นค่าเริ่มต้น กรุณาเปลี่ยนรหัสผ่านก่อนนำระบบไปใช้งานจริง ***
+        const USERS = [
+            { username: '39HT08', name: 'ส.ต.ท.ราชานนท์ ฉัตร์ไตรภพ', passwordHash: '09d05e8aaf61a99d12ac70ac61b11bdf85d0ba124ea28927fbf93dc4d5f8d626' },
+            { username: '18P906', name: 'ด.ต.อุกฤษฎ์ กวานดา', passwordHash: 'c35933e394821d9534dd7649e6c89a30dea8c4fa599b216bf908fc67f7d2ac6f' },
+            { username: '20RS06', name: 'พ.ต.ท.สุวิทย์ ซุยจรูญ', passwordHash: 'db00809696880b0f0f8ec906305eb03a97352c3884797375114a52558643cf01' },
+            { username: '11L804', name: 'พ.ต.ท.มานิต กิจหิรัญ', passwordHash: 'be23215472aac1f16fd1292042107e7dd34f6d980f3374044330b79ecf8234d0' },
+            { username: '25ND02', name: 'พ.ต.อ.ฐาปนะ คลอสุวรรณา', passwordHash: 'e20518dce27f5f69846242196c9fc7f6e7d857460b39bcd4770c66d6a6894807' },
+            { username: '11A117', name: 'พ.ต.ท.เดช ภูมิสถาน', passwordHash: '4a0ba2c8b62165eaf58bdd522d718bbbb5230dea56d76275c03608b7127fca4c' },
+            { username: 'Raboapai', name: 'รหัสกลาง สภ.ระเบาะไผ่', passwordHash: '37f377ab11953deee39b10e9eb46de87a63220c8944f432385152f672c968967' },
+            { username: '45CT07', name: 'ส.ต.ท.ณฤดล เกิดผล', passwordHash: '48b41b889f4426817b4c1a87debc6fb3e466d08bd9853aa1067695e927edbf21' },
+        ];
+
+        const SESSION_KEY = 'raboAuthSession';
+        const ATTEMPTS_KEY = 'raboLoginAttempts';
+        const SESSION_DURATION_MS = 12 * 60 * 60 * 1000; // หมดอายุอัตโนมัติทุก 12 ชั่วโมง
+        const MAX_LOGIN_ATTEMPTS = 5;
+        const LOCKOUT_DURATION_MS = 5 * 60 * 1000; // ล็อก 5 นาทีถ้ากรอกผิดครบจำนวน
+
+        async function sha256Hex(text) {
+            const enc = new TextEncoder().encode(text);
+            const buf = await crypto.subtle.digest('SHA-256', enc);
+            return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        function getSession() {
+            try {
+                const raw = localStorage.getItem(SESSION_KEY);
+                if (!raw) return null;
+                const session = JSON.parse(raw);
+                if (!session.expiresAt || Date.now() > session.expiresAt) {
+                    localStorage.removeItem(SESSION_KEY);
+                    return null;
+                }
+                return session;
+            } catch (e) { return null; }
+        }
+
+        function setSession(user) {
+            const session = { username: user.username, name: user.name, expiresAt: Date.now() + SESSION_DURATION_MS };
+            localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+            return session;
+        }
+
+        function clearSession() { localStorage.removeItem(SESSION_KEY); }
+
+        function getLockoutState() {
+            try {
+                return JSON.parse(localStorage.getItem(ATTEMPTS_KEY)) || { count: 0, lockUntil: 0 };
+            } catch (e) { return { count: 0, lockUntil: 0 }; }
+        }
+        function setLockoutState(state) { localStorage.setItem(ATTEMPTS_KEY, JSON.stringify(state)); }
+
+        function showLoginError(msg) {
+            document.getElementById('loginError').textContent = msg;
+            const card = document.querySelector('.login-card');
+            card.classList.remove('shake');
+            void card.offsetWidth; // reflow เพื่อให้ animation เล่นซ้ำได้
+            card.classList.add('shake');
+        }
+
+        function showLoginScreen(infoMsg) {
+            document.getElementById('loginScreen').style.display = 'flex';
+            document.getElementById('userBadge').classList.remove('visible');
+            document.getElementById('loginError').textContent = '';
+            document.getElementById('loginPassword').value = '';
+            if (infoMsg) showToast(infoMsg, 'info');
+            setTimeout(() => document.getElementById('loginUsername')?.focus(), 100);
+        }
+
+        function enterApp(session) {
+            document.getElementById('loginScreen').style.display = 'none';
+            const badge = document.getElementById('userBadge');
+            document.getElementById('userBadgeName').textContent = '👮 ' + session.name;
+            badge.classList.add('visible');
+            setTimeout(() => {
+                map.invalidateSize();
+                positionFloatingButtons();
+            }, 50);
+        }
+
+        function initAuth() {
+            const session = getSession();
+            if (session) {
+                enterApp(session);
+            } else {
+                showLoginScreen();
+            }
+            // ตรวจสอบทุก 1 นาทีว่า session หมดอายุระหว่างใช้งานหรือยัง
+            setInterval(() => {
+                const loginScreenHidden = document.getElementById('loginScreen').style.display === 'none';
+                if (loginScreenHidden && !getSession()) {
+                    showLoginScreen('หมดเวลาการใช้งาน กรุณาเข้าสู่ระบบใหม่');
+                }
+            }, 60000);
+        }
+
+        function doLogout() {
+            clearSession();
+            location.reload();
+        }
+
+        document.getElementById('loginForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+            const submitBtn = document.getElementById('loginSubmitBtn');
+            const state = getLockoutState();
+            if (state.lockUntil && Date.now() < state.lockUntil) {
+                const remain = Math.ceil((state.lockUntil - Date.now()) / 1000);
+                showLoginError(`กรอกรหัสผิดหลายครั้งเกินไป กรุณารออีก ${remain} วินาที`);
+                return;
+            }
+
+            const username = document.getElementById('loginUsername').value.trim();
+            const password = document.getElementById('loginPassword').value;
+            if (!username || !password) { showLoginError('กรุณากรอก Username และ Password'); return; }
+
+            submitBtn.disabled = true;
+            const hash = await sha256Hex(password);
+            const user = USERS.find(u => u.username.toLowerCase() === username.toLowerCase() && u.passwordHash === hash);
+            submitBtn.disabled = false;
+
+            if (user) {
+                setLockoutState({ count: 0, lockUntil: 0 });
+                const session = setSession(user);
+                enterApp(session);
+            } else {
+                const newCount = (state.count || 0) + 1;
+                if (newCount >= MAX_LOGIN_ATTEMPTS) {
+                    setLockoutState({ count: 0, lockUntil: Date.now() + LOCKOUT_DURATION_MS });
+                    showLoginError('กรอกรหัสผิดครบ 5 ครั้ง ระบบล็อกชั่วคราว 5 นาที');
+                } else {
+                    setLockoutState({ count: newCount, lockUntil: 0 });
+                    showLoginError(`Username หรือ Password ไม่ถูกต้อง (ผิด ${newCount}/${MAX_LOGIN_ATTEMPTS} ครั้ง)`);
+                }
+            }
+        });
+
+        loadData();
+        initAuth();
+
+        // ===================== ซ่อน/แสดงแผงควบคุมเมื่อแตะบนแผนที่ =====================
+        let uiVisible = true;
+
+        function setUIVisible(visible) {
+            uiVisible = visible;
+            const panel = document.querySelector('.bottom-panel');
+            const gpsBtn = document.querySelector('.gps-btn');
+            const nearbyBtn = document.querySelector('.nearby-btn');
+            const settingsBtn = document.querySelector('.settings-btn');
+            const handle = document.getElementById('uiHandle');
+            [panel, gpsBtn, nearbyBtn, settingsBtn].forEach(el => el.classList.toggle('ui-hidden', !visible));
+            handle.classList.toggle('visible', !visible);
+        }
+
+        function toggleUI() {
+            setUIVisible(!uiVisible);
+        }
+
+        map.on('click', function () {
+            // ไม่สลับสถานะถ้ามีหน้าต่าง modal เปิดอยู่ (เช่น ตอนเพิ่ม/แก้ไข/ลบจุด)
+            if (document.getElementById('modalOverlay').style.display === 'flex') return;
+            toggleUI();
+        });
+
+        // ===================== จัดตำแหน่งปุ่มลอยให้อยู่เหนือแผงควบคุมเสมอ =====================
+        function positionFloatingButtons() {
+            if (typeof uiVisible !== 'undefined' && !uiVisible) return;
+            const panel = document.querySelector('.bottom-panel');
+            const gpsBtn = document.querySelector('.gps-btn');
+            const nearbyBtn = document.querySelector('.nearby-btn');
+            const settingsBtn = document.querySelector('.settings-btn');
+            if (!panel || !gpsBtn || !nearbyBtn || !settingsBtn) return;
+            const rect = panel.getBoundingClientRect();
+            const gap = 14;
+            const gpsBottom = Math.round((window.innerHeight - rect.top) + gap);
+            gpsBtn.style.bottom = gpsBottom + 'px';
+            nearbyBtn.style.bottom = (gpsBottom + 58) + 'px';
+            settingsBtn.style.bottom = (gpsBottom + 116) + 'px';
+        }
+        window.addEventListener('load', positionFloatingButtons);
+        window.addEventListener('resize', positionFloatingButtons);
+        window.addEventListener('orientationchange', () => setTimeout(positionFloatingButtons, 200));
+        setTimeout(positionFloatingButtons, 300);
+    </script>
+</body>
+</html>
