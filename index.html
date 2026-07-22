@@ -850,15 +850,21 @@
                 const d = haversine(u.lat, u.lng, item.lat, item.lng);
                 distHtml = `<div style="font-size:13px;color:#9e9e9e;margin-top:4px;">ระยะทางตรง: ${d.toFixed(2)} กม.</div>`;
             }
+            const canDelete = currentUserCanDelete();
+            const actionsHtml = canDelete
+                ? `<div class="popup-actions">
+                        <button class="popup-action edit" onclick="openEditModal('${item.id}')">✏️ แก้ไข</button>
+                        <button class="popup-action delete" onclick="confirmDelete('${item.id}')">🗑️ ลบ</button>
+                   </div>`
+                : `<div class="popup-actions">
+                        <button class="popup-action edit" style="flex:1;" onclick="openEditModal('${item.id}')">✏️ แก้ไข</button>
+                   </div>`;
             return `
                 <div style="font-size: 15px; text-align:center; min-width:190px;">
                     <b style="color: #ffca28; font-size:16px;">${escapeHtml(item.name)}</b>
                     ${distHtml}
                     <a href="${gmapLink}" target="_blank" rel="noopener" class="popup-btn">🚀 นำทาง (Google Maps)</a>
-                    <div class="popup-actions">
-                        <button class="popup-action edit" onclick="openEditModal('${item.id}')">✏️ แก้ไข</button>
-                        <button class="popup-action delete" onclick="confirmDelete('${item.id}')">🗑️ ลบ</button>
-                    </div>
+                    ${actionsHtml}
                 </div>
             `;
         }
@@ -1124,6 +1130,10 @@
         }
 
         function confirmDelete(id) {
+            if (!currentUserCanDelete()) {
+                showToast('คุณไม่มีสิทธิ์ลบข้อมูล เฉพาะผู้ที่ได้รับอนุญาตเท่านั้น', 'error');
+                return;
+            }
             const item = houseData.find(h => h.id === id);
             if (!item) return;
             openModal(`
@@ -1137,8 +1147,18 @@
         }
 
         async function deletePoint(id) {
+            if (!currentUserCanDelete()) {
+                closeModal();
+                showToast('คุณไม่มีสิทธิ์ลบข้อมูล เฉพาะผู้ที่ได้รับอนุญาตเท่านั้น', 'error');
+                return;
+            }
+            const session = getSession();
             if (getApiUrl()) {
-                const result = await apiPost({ action: 'deletePoint', id: id });
+                const result = await apiPost({
+                    action: 'deletePoint', id: id,
+                    username: session ? session.username : '',
+                    passwordHash: session ? session.passwordHash : ''
+                });
                 if (result.ok) {
                     houseData = houseData.filter(h => h.id !== id);
                     localStorage.setItem('raboMapData', JSON.stringify(houseData));
@@ -1281,15 +1301,14 @@
         // วิธีสร้าง passwordHash: เปิดไฟล์ gen-password-hash.html ที่แถมมาให้ พิมพ์รหัสผ่านที่ต้องการ
         // แล้วคัดลอกค่า Hash ที่ได้มาวางแทนที่ค่า passwordHash ด้านล่าง
         // *** บัญชีตัวอย่างด้านล่างนี้เป็นค่าเริ่มต้น กรุณาเปลี่ยนรหัสผ่านก่อนนำระบบไปใช้งานจริง ***
+        //
+        // canDelete: true  = มีสิทธิ์ลบจุดข้อมูลได้ (นอกเหนือจากค้นหา/เพิ่ม/แก้ไข ซึ่งทำได้ทุกบัญชี)
+        // canDelete: false หรือไม่ใส่ = ไม่มีสิทธิ์ลบ (ทำได้แค่ค้นหา/เพิ่ม/แก้ไข)
         const USERS = [
-            { username: '39HT08', name: 'ส.ต.ท.ราชานนท์ ฉัตร์ไตรภพ', passwordHash: '09d05e8aaf61a99d12ac70ac61b11bdf85d0ba124ea28927fbf93dc4d5f8d626' },
-            { username: '18P906', name: 'ด.ต.อุกฤษฎ์ กวานดา', passwordHash: 'c35933e394821d9534dd7649e6c89a30dea8c4fa599b216bf908fc67f7d2ac6f' },
-            { username: '20RS06', name: 'พ.ต.ท.สุวิทย์ ซุยจรูญ', passwordHash: 'db00809696880b0f0f8ec906305eb03a97352c3884797375114a52558643cf01' },
-            { username: '11L804', name: 'พ.ต.ท.มานิต กิจหิรัญ', passwordHash: 'be23215472aac1f16fd1292042107e7dd34f6d980f3374044330b79ecf8234d0' },
-            { username: '25ND02', name: 'พ.ต.อ.ฐาปนะ คลอสุวรรณา', passwordHash: 'e20518dce27f5f69846242196c9fc7f6e7d857460b39bcd4770c66d6a6894807' },
-            { username: '11A117', name: 'พ.ต.ท.เดช ภูมิสถาน', passwordHash: '4a0ba2c8b62165eaf58bdd522d718bbbb5230dea56d76275c03608b7127fca4c' },
-            { username: 'Raboapai', name: 'รหัสกลาง สภ.ระเบาะไผ่', passwordHash: '37f377ab11953deee39b10e9eb46de87a63220c8944f432385152f672c968967' },
-            { username: '45CT07', name: 'ส.ต.ท.ณฤดล เกิดผล', passwordHash: '48b41b889f4426817b4c1a87debc6fb3e466d08bd9853aa1067695e927edbf21' },
+            { username: 'admin', name: 'ผู้ดูแลระบบ', passwordHash: '494a715f7e9b4071aca61bac42ca858a309524e5864f0920030862a4ae7589be', canDelete: false }, // รหัสเริ่มต้น: changeme123
+            { username: 'demo', name: 'เจ้าหน้าที่ทดสอบระบบ', passwordHash: '0ead2060b65992dca4769af601a1b3a35ef38cfad2c2c465bb160ea764157c5d', canDelete: false }, // รหัสเริ่มต้น: demo1234
+            { username: '39HT08', name: 'ส.ต.ท.ราชานนท์ ฉัตร์ไตรภพ', passwordHash: '09d05e8aaf61a99d12ac70ac61b11bdf85d0ba124ea28927fbf93dc4d5f8d626', canDelete: true },
+            { username: 'Raboapai', name: 'รหัสกลาง สภ.ระเบาะไผ่', passwordHash: '37f377ab11953deee39b10e9eb46de87a63220c8944f432385152f672c968967', canDelete: true }
         ];
 
         const SESSION_KEY = 'raboAuthSession';
@@ -1318,9 +1337,20 @@
         }
 
         function setSession(user) {
-            const session = { username: user.username, name: user.name, expiresAt: Date.now() + SESSION_DURATION_MS };
+            const session = {
+                username: user.username,
+                name: user.name,
+                canDelete: !!user.canDelete,
+                passwordHash: user.passwordHash, // ใช้ยืนยันสิทธิ์ลบข้อมูลกับเซิร์ฟเวอร์อีกชั้นหนึ่ง
+                expiresAt: Date.now() + SESSION_DURATION_MS
+            };
             localStorage.setItem(SESSION_KEY, JSON.stringify(session));
             return session;
+        }
+
+        function currentUserCanDelete() {
+            const session = getSession();
+            return !!(session && session.canDelete);
         }
 
         function clearSession() { localStorage.removeItem(SESSION_KEY); }
